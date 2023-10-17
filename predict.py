@@ -511,15 +511,30 @@ class Predictor(BasePredictor):
 
         output_paths = []
         for i, nsfw in enumerate(has_nsfw_content):
-            # Sorry this is bad code
-            if encryptedInput:
+            if encryptedOutput:
                 user_cipher_suite = Fernet(userPublicKey.encode())
-                encryptedImage = user_cipher_suite.encrypt(output.images[i]).decode()
+                # TODO need to check security assumptions of writing file temporarily
+                # Save the image in a standard format (e.g., PNG) to a temporary file
+                temp_image_path = f"/tmp/temp_image-{i}.png"
+                output.images[i].save(temp_image_path, 'PNG')  # Assuming 'image' is a PIL Image object
+
+                # Read the saved image file in binary mode
+                with open(temp_image_path, 'rb') as file:
+                    image_data = file.read()
+
+                # Encrypt the binary data of the whole file
+                encryptedImage = user_cipher_suite.encrypt(image_data)
+
+                # Save the encrypted data to the final output file
                 output_path = f"/tmp/encrypted_out-{i}.enc"
-                # encryptedOutput.save(output_path)
                 with open(output_path, 'wb') as file_out:
                     file_out.write(encryptedImage)
+
+                # Append the path for record-keeping
                 output_paths.append(Path(output_path))
+
+                # Delete the temporary image file
+                os.remove(temp_image_path)
             else: 
                 output_path = f"/tmp/out-{i}.png"
                 output.images[i].save(output_path)
