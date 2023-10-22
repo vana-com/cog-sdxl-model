@@ -230,24 +230,24 @@ class Predictor(BasePredictor):
         Lora_url: str = Input(
             description="Load Lora model",
         ),
-        encryptedInput: bool = Input(
-            description="Whether prompt is encrypted",
-            default=True,
-        ),
         prompt: str = Input(
-            description="Encrypted input prompt",
+            description="Input prompt. If encryptedInput is true, this should be encrypted",
             default="An TOK riding a rainbow unicorn",
         ),
         negative_prompt: str = Input(
             description="Input Negative Prompt",
             default="",
         ),
+        encryptedInput: bool = Input(
+            description="Whether prompt is encrypted",
+            default=False,
+        ),
         encryptedOutput: bool = Input(
             description="Whether image output should be encrypted",
-            default=True,
+            default=False,
         ),
         userPublicKey: str = Input(
-            description="The public key of the user, used to encrypt image",
+            description="The public key of the user, used to encrypt image. Only used if encryptedOutput is on",
             default='4KRWKwyJCi5RyDQ10YmTUL4yS0XkyBFpr_BeB0XGQlM=',
         ),
         image: Path = Input(
@@ -260,7 +260,7 @@ class Predictor(BasePredictor):
         ),
         width: int = Input(
             description="Width of output image",
-            default=1024,
+            default=768,
         ),
         height: int = Input(
             description="Height of output image",
@@ -269,7 +269,7 @@ class Predictor(BasePredictor):
         num_outputs: int = Input(
             description="Number of images to output.",
             ge=1,
-            le=4,
+            le=10,
             default=1,
         ),
         scheduler: str = Input(
@@ -278,7 +278,7 @@ class Predictor(BasePredictor):
             default="K_EULER",
         ),
         num_inference_steps: int = Input(
-            description="Number of denoising steps", ge=1, le=500, default=50
+            description="Number of denoising steps", ge=1, le=500, default=35
         ),
         guidance_scale: float = Input(
             description="Scale for classifier-free guidance", ge=1, le=50, default=7.5
@@ -309,7 +309,11 @@ class Predictor(BasePredictor):
         ),
         apply_watermark: bool = Input(
             description="Applies a watermark to enable determining if an image is generated in downstream applications. If you have other provisions for generating or deploying images safely, you can use this to disable watermarking.",
-            default=True,
+            default=False,
+        ),
+        safe_filter: bool = Input(
+            description="Whether to remove output images that could be nsfw",
+            default=False,
         ),
         lora_scale: float = Input(
             description="LoRA additive scale. Only applicable on trained models.",
@@ -479,7 +483,6 @@ class Predictor(BasePredictor):
 
         common_args = {
             "prompt": [prompt] * num_outputs,
-            # "encryptedInput": encryptedInput,
             "negative_prompt": [negative_prompt] * num_outputs,
             "guidance_scale": guidance_scale,
             "generator": generator,
@@ -511,7 +514,11 @@ class Predictor(BasePredictor):
 
         output_paths = []
         for i, nsfw in enumerate(has_nsfw_content):
+            if nsfw and safe_filter:
+                print(f"NSFW content detected in image {i}, skipping")
+                continue
             if encryptedOutput:
+                # TODO need to switch to asymmetric encryption 
                 user_cipher_suite = Fernet(userPublicKey.encode())
                 # TODO need to check security assumptions of writing file temporarily
                 # Save the image in a standard format (e.g., PNG) to a temporary file
