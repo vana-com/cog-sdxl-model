@@ -21,9 +21,6 @@ from diffusers import (
     StableDiffusionXLInpaintPipeline,
 )
 from diffusers.models.attention_processor import LoRAAttnProcessor2_0
-from diffusers.pipelines.stable_diffusion.safety_checker import (
-    StableDiffusionSafetyChecker,
-)
 from diffusers.utils import load_image
 from safetensors import safe_open
 from safetensors.torch import load_file
@@ -52,7 +49,6 @@ SDXL_URL = "https://weights.replicate.delivery/default/sdxl/sdxl-vae-fix-1.0.tar
 REFINER_URL = (
     "https://weights.replicate.delivery/default/sdxl/refiner-no-vae-no-encoder-1.0.tar"
 )
-SAFETY_URL = "https://weights.replicate.delivery/default/sdxl/safety-1.0.tar"
 
 # Currently using symmetric encryption
 # But we should use asymmetric encryption
@@ -175,12 +171,6 @@ class Predictor(BasePredictor):
         start = time.time()
         self.tuned_model = False
 
-        print("Loading safety checker...")
-        if not os.path.exists(SAFETY_CACHE):
-            download_weights(SAFETY_URL, SAFETY_CACHE)
-        self.safety_checker = StableDiffusionSafetyChecker.from_pretrained(
-            SAFETY_CACHE, torch_dtype=torch.float16
-        ).to("cuda")
         self.feature_extractor = CLIPImageProcessor.from_pretrained(FEATURE_EXTRACTOR)
 
         if not os.path.exists(SDXL_MODEL_CACHE):
@@ -212,17 +202,6 @@ class Predictor(BasePredictor):
         img = img.convert("RGB")
         
         return img
-
-    def run_safety_checker(self, image):
-        safety_checker_input = self.feature_extractor(image, return_tensors="pt").to(
-            "cuda"
-        )
-        np_image = [np.array(val) for val in image]
-        image, has_nsfw_concept = self.safety_checker(
-            images=np_image,
-            clip_input=safety_checker_input.pixel_values.to(torch.float16),
-        )
-        return image, has_nsfw_concept
 
     @torch.inference_mode()
     def predict(
@@ -309,10 +288,6 @@ class Predictor(BasePredictor):
         ),
         apply_watermark: bool = Input(
             description="Applies a watermark to enable determining if an image is generated in downstream applications. If you have other provisions for generating or deploying images safely, you can use this to disable watermarking.",
-            default=False,
-        ),
-        safe_filter: bool = Input(
-            description="Whether to remove output images that could be nsfw",
             default=False,
         ),
         lora_scale: float = Input(
@@ -421,8 +396,6 @@ class Predictor(BasePredictor):
             )
             self.refiner.to("cuda")
 
-            
-            
         """Run a single prediction on the model"""
         if seed is None:
             seed = int.from_bytes(os.urandom(2), "big")
@@ -434,6 +407,7 @@ class Predictor(BasePredictor):
             for k, v in self.token_map.items():
                 prompt = prompt.replace(k, v)
         print(f"Prompt: {prompt}")
+        
         # Decrypt the encrypted prompt
         if encryptedInput:
             cipher_suite = Fernet(NODE_KEY)
@@ -471,6 +445,26 @@ class Predictor(BasePredictor):
             sdxl_kwargs["denoising_end"] = high_noise_frac
         elif refine == "base_image_refiner":
             sdxl_kwargs["output_type"] = "latent"
+
+
+        '''
+        # Face in painting
+        print("inpainting mode")
+        loaded_image = self.load_image(image)
+        sdxl_kwargs["image"] = loaded_image
+        sdxl_kwargs["mask_image"] = self.load_image(mask)
+        sdxl_kwargs["strength"] = prompt_strength
+
+        # Get the dimensions (height and width) of the loaded image
+        image_width, image_height = loaded_image.size
+
+        sdxl_kwargs["target_size"] = (image_width, image_height)
+        sdxl_kwargs["original_size"] = (image_width, image_height)
+
+        pipe = self.inpaint_pipe
+        ### Done in painting
+        '''
+
 
         if not apply_watermark:
             # toggles watermark for this prediction
@@ -510,13 +504,8 @@ class Predictor(BasePredictor):
             pipe.watermark = watermark_cache
             self.refiner.watermark = watermark_cache
 
-        _, has_nsfw_content = self.run_safety_checker(output.images)
-
         output_paths = []
-        for i, nsfw in enumerate(has_nsfw_content):
-            if nsfw and safe_filter:
-                print(f"NSFW content detected in image {i}, skipping")
-                continue
+        for i, image in enumerate(output.images):
             if encryptedOutput:
                 # TODO need to switch to asymmetric encryption 
                 user_cipher_suite = Fernet(userPublicKey.encode())
