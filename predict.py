@@ -26,6 +26,7 @@ from safetensors import safe_open
 from safetensors.torch import load_file
 from transformers import CLIPImageProcessor
 from cryptography.fernet import Fernet
+from face_painter import FacePainter
 
 import json
 import requests
@@ -178,6 +179,7 @@ class Predictor(BasePredictor):
         if not os.path.exists(REFINER_MODEL_CACHE):
             download_weights(REFINER_URL, REFINER_MODEL_CACHE)
 
+        # TODO(anna) Could we do more in this setup step to make load times faster?
 
         print("setup took: ", time.time() - start)
         # self.txt2img_pipe.__class__.encode_prompt = new_encode_prompt
@@ -216,6 +218,14 @@ class Predictor(BasePredictor):
         negative_prompt: str = Input(
             description="Input Negative Prompt",
             default="",
+        ),
+        enable_face_inpainting: bool = Input(
+            description="Inpaint small faces to improve resolution. Will slow down inference.",
+            default=False,
+        ),
+        max_face_inpaint_size: int = Input(
+            description="Max size of face to inpaint. Recommended: 135-400. If it's too high, may get weird portraits.",
+            default=300,
         ),
         encryptedInput: bool = Input(
             description="Whether prompt is encrypted",
@@ -336,6 +346,9 @@ class Predictor(BasePredictor):
             )
             self.inpaint_pipe.to("cuda")
 
+            print("Initializing face painter...")
+            self.face_painter = FacePainter(self.inpaint_pipe)
+
             print("Loading SDXL refiner pipeline...")
 
             print("Loading refiner pipeline...")
@@ -407,7 +420,7 @@ class Predictor(BasePredictor):
             for k, v in self.token_map.items():
                 prompt = prompt.replace(k, v)
         print(f"Prompt: {prompt}")
-        
+
         # Decrypt the encrypted prompt
         if encryptedInput:
             cipher_suite = Fernet(NODE_KEY)
@@ -446,26 +459,6 @@ class Predictor(BasePredictor):
         elif refine == "base_image_refiner":
             sdxl_kwargs["output_type"] = "latent"
 
-
-        '''
-        # Face in painting
-        print("inpainting mode")
-        loaded_image = self.load_image(image)
-        sdxl_kwargs["image"] = loaded_image
-        sdxl_kwargs["mask_image"] = self.load_image(mask)
-        sdxl_kwargs["strength"] = prompt_strength
-
-        # Get the dimensions (height and width) of the loaded image
-        image_width, image_height = loaded_image.size
-
-        sdxl_kwargs["target_size"] = (image_width, image_height)
-        sdxl_kwargs["original_size"] = (image_width, image_height)
-
-        pipe = self.inpaint_pipe
-        ### Done in painting
-        '''
-
-
         if not apply_watermark:
             # toggles watermark for this prediction
             watermark_cache = pipe.watermark
@@ -500,19 +493,32 @@ class Predictor(BasePredictor):
 
             output = self.refiner(**common_args, **refiner_kwargs)
 
+        if enable_face_inpainting:
+            print("inpainting mode")
+            # May need to download lora
+            inpainted_images = [self.face_painter.paint_faces(
+                    image, 
+                    guidance_scale=guidance_scale, 
+                    lora_paths=[Lora_url],
+                    prompt='a bright green square', # prompt[i],
+                    save_working_images=False,
+                    max_face_size = max_face_inpaint_size)
+                                            for i, image in enumerate(output.images)]
+            output = inpainted_images
+
         if not apply_watermark:
             pipe.watermark = watermark_cache
             self.refiner.watermark = watermark_cache
 
         output_paths = []
-        for i, image in enumerate(output.images):
+        for i, image in enumerate(output):
             if encryptedOutput:
                 # TODO need to switch to asymmetric encryption 
                 user_cipher_suite = Fernet(userPublicKey.encode())
                 # TODO need to check security assumptions of writing file temporarily
                 # Save the image in a standard format (e.g., PNG) to a temporary file
                 temp_image_path = f"/tmp/temp_image-{i}.png"
-                output.images[i].save(temp_image_path, 'PNG')  # Assuming 'image' is a PIL Image object
+                image.save(temp_image_path, 'PNG')  # Assuming 'image' is a PIL Image object
 
                 # Read the saved image file in binary mode
                 with open(temp_image_path, 'rb') as file:
@@ -533,7 +539,7 @@ class Predictor(BasePredictor):
                 os.remove(temp_image_path)
             else: 
                 output_path = f"/tmp/out-{i}.png"
-                output.images[i].save(output_path)
+                image.save(output_path)
                 output_paths.append(Path(output_path))
 
         return output_paths
