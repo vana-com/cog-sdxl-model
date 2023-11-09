@@ -207,35 +207,16 @@ class Predictor(BasePredictor):
     def predict(
         self,
         Lora_url: str = Input(
-            description="Load Lora model",
+            description="Load Lora model. Example: https://replicate.delivery/pbxt/TJLLieDQVNWfM0o2UOjh103bt1XJp1hV4fKjMtz17RAtBnZjA/trained_model.tar",
+            default="https://replicate.delivery/pbxt/TJLLieDQVNWfM0o2UOjh103bt1XJp1hV4fKjMtz17RAtBnZjA/trained_model.tar"
         ),
         prompt: str = Input(
             description="Input prompt. If encryptedInput is true, this should be encrypted",
-            default="An TOK riding a rainbow unicorn",
+            default="A TOK person riding a rainbow unicorn",
         ),
         negative_prompt: str = Input(
             description="Input Negative Prompt",
-            default="",
-        ),
-        encryptedInput: bool = Input(
-            description="Whether prompt is encrypted",
-            default=False,
-        ),
-        encryptedOutput: bool = Input(
-            description="Whether image output should be encrypted",
-            default=False,
-        ),
-        userPublicKey: str = Input(
-            description="The public key of the user, used to encrypt image. Only used if encryptedOutput is on",
-            default='4KRWKwyJCi5RyDQ10YmTUL4yS0XkyBFpr_BeB0XGQlM=',
-        ),
-        image: Path = Input(
-            description="Input image for img2img or inpaint mode",
-            default=None,
-        ),
-        mask: Path = Input(
-            description="Input mask for inpaint mode. Black areas will be preserved, white areas will be inpainted.",
-            default=None,
+            default="low quality, duplicate faces, deformed iris, distorted eyes, text, cropped, out of frame, jpeg artifacts, duplicate, mutilated, extra fingers, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, clone, disfigured, fused fingers",
         ),
         width: int = Input(
             description="Width of output image",
@@ -249,7 +230,15 @@ class Predictor(BasePredictor):
             description="Number of images to output.",
             ge=1,
             le=10,
-            default=1,
+            default=4,
+        ),
+        image: Path = Input(
+            description="Input image for img2img or inpaint mode",
+            default=None,
+        ),
+        mask: Path = Input(
+            description="Input mask for inpaint mode. Black areas will be preserved, white areas will be inpainted.",
+            default=None,
         ),
         scheduler: str = Input(
             description="scheduler",
@@ -295,6 +284,18 @@ class Predictor(BasePredictor):
             ge=0.0,
             le=1.0,
             default=0.6,
+        ),
+        encryptedInput: bool = Input(
+            description="Whether prompt is encrypted",
+            default=False,
+        ),
+        encryptedOutput: bool = Input(
+            description="Whether image output should be encrypted",
+            default=False,
+        ),
+        userPublicKey: str = Input(
+            description="The public key of the user, used to encrypt image. Only used if encryptedOutput is on",
+            default='4KRWKwyJCi5RyDQ10YmTUL4yS0XkyBFpr_BeB0XGQlM=',
         ),
     ) -> List[Path]:
         lora = True
