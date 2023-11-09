@@ -447,26 +447,6 @@ class Predictor(BasePredictor):
         elif refine == "base_image_refiner":
             sdxl_kwargs["output_type"] = "latent"
 
-
-        '''
-        # Face in painting
-        print("inpainting mode")
-        loaded_image = self.load_image(image)
-        sdxl_kwargs["image"] = loaded_image
-        sdxl_kwargs["mask_image"] = self.load_image(mask)
-        sdxl_kwargs["strength"] = prompt_strength
-
-        # Get the dimensions (height and width) of the loaded image
-        image_width, image_height = loaded_image.size
-
-        sdxl_kwargs["target_size"] = (image_width, image_height)
-        sdxl_kwargs["original_size"] = (image_width, image_height)
-
-        pipe = self.inpaint_pipe
-        ### Done in painting
-        '''
-
-
         if not apply_watermark:
             # toggles watermark for this prediction
             watermark_cache = pipe.watermark
