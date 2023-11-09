@@ -223,9 +223,21 @@ class Predictor(BasePredictor):
             description="Inpaint small faces to improve resolution. Will slow down inference.",
             default=False,
         ),
+        inpainting_prompt: str = Input(
+            description="Prompt for inpainting, use <s1><s2> to refer to lora. Made this available in params just to find the right prompt",
+            default="realistic <s1><s2> man face",
+        ),
+        inpainting_negative_prompt: str = Input(
+            description="Prompt for inpainting, use <s1><s2> to refer to lora. Made this available in params just to find the right prompt",
+            default="frame, mask, surgical, ui, ugly, distorted eyes, deformed iris, toothless, squint, deformed iris, deformed pupils, low quality, jpeg artifacts, ugly, mutilated",
+        ),
         max_face_inpaint_size: int = Input(
             description="Max size of face to inpaint. Recommended: 135-400. If it's too high, may get weird portraits.",
             default=300,
+        ),
+        inpainting_gradient_size: int = Input(
+            description="Gradient size to blur inpainting in.",
+            default=60,
         ),
         encryptedInput: bool = Input(
             description="Whether prompt is encrypted",
@@ -500,18 +512,22 @@ class Predictor(BasePredictor):
                     image, 
                     guidance_scale=guidance_scale, 
                     lora_paths=[Lora_url],
-                    prompt='a bright green square', # prompt[i],
+                    prompt=inpainting_prompt, # prompt[i],
+                    negative_prompt=inpainting_negative_prompt,
+                    gradient_size=inpainting_gradient_size,
                     save_working_images=False,
                     max_face_size = max_face_inpaint_size)
                                             for i, image in enumerate(output.images)]
-            output = inpainted_images
+            output_images = inpainted_images
+        else:
+            output_images = output.images
 
         if not apply_watermark:
             pipe.watermark = watermark_cache
             self.refiner.watermark = watermark_cache
 
         output_paths = []
-        for i, image in enumerate(output):
+        for i, image in enumerate(output_images):
             if encryptedOutput:
                 # TODO need to switch to asymmetric encryption 
                 user_cipher_suite = Fernet(userPublicKey.encode())

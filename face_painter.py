@@ -20,10 +20,19 @@ class FacePainter:
 
         @property
         def mask_area(self):
-            mask_dimension = int(self.face_area.h * 1.5)
+            mask_dimension = int(self.face_area.h * 3) # int(self.face_area.h * 1.5)
+            print("2 mask_dimension", mask_dimension)
             mask_dimension = int( mask_dimension + ( 48 - mask_dimension % 8))
+            print("3 mask_dimension", mask_dimension)
             if mask_dimension > self.zoom:
                 mask_dimension = self.zoom
+            print("4 mask_dimension", mask_dimension)
+
+            print("a", int(min(max(self.face_area.x - ((mask_dimension - self.face_area.w) / 2), 0), self.max_height - mask_dimension)))
+            print("b", int(min(max(self.face_area.y - ((mask_dimension - self.face_area.h) / 2), 0), self.max_height - mask_dimension)))
+            print("c", int(min(mask_dimension, self.max_width)))
+            print("d", int(min(mask_dimension, self.max_height)))
+
 
             return ImageArea(
                 int(min(max(self.face_area.x - ((mask_dimension - self.face_area.w) / 2), 0), self.max_height - mask_dimension)),
@@ -50,14 +59,12 @@ class FacePainter:
             return mask_img
         
         def image(self, base_image: Image.Image):
-            print('image: ', base_image)
             base_image = base_image.copy()
             base_image = base_image.crop((self.mask_area.x, self.mask_area.y, self.mask_area.x + self.mask_area.w, self.mask_area.y + self.mask_area.h))
             if self.mask_area.w < self.zoom:
                 base_image = base_image.resize([self.zoomed_size, self.zoomed_size])
             return base_image
 
-    # TODO(anna) replace pipeline with non-custom to vana one
     def __init__(self, inpaint_pipe) -> None:
         self.face_detection = mediapipe.solutions.face_detection.FaceDetection(
             model_selection=1, min_detection_confidence=0.10
@@ -72,25 +79,35 @@ class FacePainter:
         
         if results.detections:
             for detection in results.detections:
+                print('detection width', detection.location_data.relative_bounding_box.width)
+                print('detection height', detection.location_data.relative_bounding_box.height)
+
+                offset = 0.25
+
                 x_min = int(
                     detection.location_data.relative_bounding_box.xmin
-                    * image_arr.shape[1]
+                    * image_arr.shape[1] * (1 - offset)
                 )
                 y_min = int(
                     detection.location_data.relative_bounding_box.ymin
-                    * image_arr.shape[0]
+                    * image_arr.shape[0] * (1 - offset) * (1 - offset) # Add some vertical padding
                 )
                 width = int(
                     detection.location_data.relative_bounding_box.width
-                    * image_arr.shape[1]
+                    * image_arr.shape[1] * (1 + 2*offset) 
                 )
                 width = width - width % 2
                 
                 height = int(
                     detection.location_data.relative_bounding_box.height
-                    * image_arr.shape[0]
+                    * image_arr.shape[0] * (1 + 2 * offset) * (1 + 2 * offset) # Make it a rectangle
                 )
-                height = height - height % 2
+                height = height - height % 2 # Ensure even integer
+
+                print('image_arr.shape[0]', image_arr.shape[0])
+                print('image_arr.shape[1]', image_arr.shape[1])
+                print('face_area dimensions', width, height)
+                print('face_area start', x_min, y_min)
 
                 self.masks.append(
                     self.Mask(
@@ -100,11 +117,10 @@ class FacePainter:
                     )
                 )
 
-    def _paste(self, new_image, area: ImageArea):
+    def _paste(self, new_image, area: ImageArea, gradient_size = 60):
 
         new_image = new_image.resize([area.w, area.h])
         paste_mask = Image.new('L', new_image.size, 255)
-        gradient_size = 15
         for i in range(gradient_size):
             alpha = 255 * (i + 1) // (gradient_size + 1)
             ImageDraw.Draw(paste_mask).rectangle(
@@ -115,27 +131,34 @@ class FacePainter:
     def paint_faces(
         self, 
         image, 
-        prompt, 
+        prompt,
+        negative_prompt,
+        gradient_size,
         guidance_scale=4.5, 
         lora_paths=[], 
         face_detect_image=None,
         save_working_images=False,
         max_face_size=None
     ):
-        
+        # When we want to support to multi person images
+        # we'll have to be smarter about how we load the lora
+        # and ensure that we have only one lora when doing in painting
+        # see https://github.com/vana-com/vana-ai-utils-py/blob/959e244f89895942426361fb2eeea109de5e3403/vanautils/face_painter.py#L131
+        # may also need to use the custom pipeline class in vana utils
+
         # self.inpaint_pipe.enable_vae_slicing = False
         self.image = image.copy()
         if face_detect_image is None:
             face_detect_image = self.image
         self._create_masks(face_detect_image)
 
+        '''
         if lora_paths:
-            print('got lora paths', lora_paths)
-            prompt = 'a bright green square, bright green square'
             # prompt = f'"<1>" face. {prompt.replace("<1>", "").replace("<2>", "")}'
         else:
-            prompt = 'a bright green square, bright green square'
             # prompt = f' face. {prompt.replace("<1>", "").replace("<2>", "")}'
+        '''
+
         for i, mask in enumerate(
             sorted(self.masks, key=lambda x: x.face_area.w * x.face_area.h, reverse=True)
         ):
@@ -162,7 +185,7 @@ class FacePainter:
                 # TODO(anna) these args may be off
                 # inpaint_pipe(**inpainting_args, **sdxl_kwargs)
                 prompt=prompt,
-                negative_prompt="frame, mask, surgical, ui, ugly, distorted eyes, deformed iris, toothless, squint, deformed iris, deformed pupils, low quality, jpeg artifacts, ugly, mutilated",
+                negative_prompt=negative_prompt,
                 image=mask.image(self.image),
                 mask_image=mask.mask,
                 guidance_scale=guidance_scale,
@@ -171,5 +194,5 @@ class FacePainter:
                 height=mask.zoomed_size,
             )
 
-            self._paste(output.images[0], mask.mask_area)
+            self._paste(output.images[0], mask.mask_area, gradient_size)
         return self.image
