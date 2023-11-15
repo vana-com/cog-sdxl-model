@@ -43,10 +43,12 @@ from dataset_and_utils import TokenEmbeddingsHandler
 
 
 SDXL_MODEL_CACHE = "./sdxl-cache"
+SDXL_INPAINTING_MODEL_CACHE = "./sdxl-inpainting-cache"
 REFINER_MODEL_CACHE = "./refiner-cache"
 SAFETY_CACHE = "./safety-cache"
 FEATURE_EXTRACTOR = "./feature-extractor"
 SDXL_URL = "https://weights.replicate.delivery/default/sdxl/sdxl-vae-fix-1.0.tar"
+SDXL_INPAINTING_URL = "" # TODO cache in painting model later
 REFINER_URL = (
     "https://weights.replicate.delivery/default/sdxl/refiner-no-vae-no-encoder-1.0.tar"
 )

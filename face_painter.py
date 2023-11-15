@@ -92,6 +92,13 @@ class FacePainter:
                 )
                 height = height - height % 2
 
+                # Add padding
+                padding = 20
+                x_min = max(x_min - padding, 0)
+                y_min = max(y_min - padding, 0)
+                width = min(width + 2 * padding, image_arr.shape[1] - x_min)
+                height = min(height + 2 * padding, image_arr.shape[0] - y_min)
+
                 self.masks.append(
                     self.Mask(
                     face_area=ImageArea(x_min, y_min, width, height),
@@ -172,4 +179,5 @@ class FacePainter:
             )
 
             self._paste(output.images[0], mask.mask_area)
+            #self._paste(output["images"][0], mask.mask_area)
         return self.image
