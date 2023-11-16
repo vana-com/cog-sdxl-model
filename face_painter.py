@@ -57,7 +57,6 @@ class FacePainter:
                 base_image = base_image.resize([self.zoomed_size, self.zoomed_size])
             return base_image
 
-    # TODO(anna) replace pipeline with non-custom to vana one
     def __init__(self, inpaint_pipe) -> None:
         self.face_detection = mediapipe.solutions.face_detection.FaceDetection(
             model_selection=1, min_detection_confidence=0.10
@@ -93,7 +92,7 @@ class FacePainter:
                 height = height - height % 2
 
                 # Add padding
-                padding = 20
+                padding = 0
                 x_min = max(x_min - padding, 0)
                 y_min = max(y_min - padding, 0)
                 width = min(width + 2 * padding, image_arr.shape[1] - x_min)

@@ -19,6 +19,7 @@ from diffusers import (
     PNDMScheduler,
     StableDiffusionXLImg2ImgPipeline,
     StableDiffusionXLInpaintPipeline,
+    AutoPipelineForInpainting
 )
 from diffusers.models.attention_processor import LoRAAttnProcessor2_0
 from diffusers.utils import load_image
@@ -181,7 +182,6 @@ class Predictor(BasePredictor):
         if not os.path.exists(REFINER_MODEL_CACHE):
             download_weights(REFINER_URL, REFINER_MODEL_CACHE)
 
-        # TODO(anna) Could we do more in this setup step to make load times faster?
 
         print("setup took: ", time.time() - start)
         # self.txt2img_pipe.__class__.encode_prompt = new_encode_prompt
@@ -336,8 +336,16 @@ class Predictor(BasePredictor):
             )
             self.img2img_pipe.to("cuda")
 
+            # TODO(anna) Cache this model so we don't have to load it everytime
             print("Loading SDXL inpaint pipeline...")
-            self.inpaint_pipe = StableDiffusionXLInpaintPipeline(
+            self.inpaint_pipe = AutoPipelineForInpainting.from_pretrained(
+                "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
+                torch_dtype=torch.float16,
+                variant="fp16"
+            ).to("cuda")
+
+            '''
+                self.inpaint_pipe = StableDiffusionXLInpaintPipeline(
                 vae=self.txt2img_pipe.vae,
                 text_encoder=self.txt2img_pipe.text_encoder,
                 text_encoder_2=self.txt2img_pipe.text_encoder_2,
@@ -347,6 +355,8 @@ class Predictor(BasePredictor):
                 scheduler=self.txt2img_pipe.scheduler,
             )
             self.inpaint_pipe.to("cuda")
+            '''
+
 
             print("Initializing face painter...")
             self.face_painter = FacePainter(self.inpaint_pipe)
