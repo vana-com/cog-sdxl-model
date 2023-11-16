@@ -41,8 +41,6 @@ import math
 
 from dataset_and_utils import TokenEmbeddingsHandler
 
-
-
 SDXL_MODEL_CACHE = "./sdxl-cache"
 SDXL_INPAINTING_MODEL_CACHE = "./sdxl-inpainting-cache"
 REFINER_MODEL_CACHE = "./refiner-cache"
@@ -221,6 +219,14 @@ class Predictor(BasePredictor):
             description="Input Negative Prompt",
             default="",
         ),
+        face_inpainting_prompt: str = Input(
+            description="Face inpainting prompt",
+            default="<s0><s1> face",
+        ),
+        face_inpainting_negative_prompt: str = Input(
+            description="Face inpainting negative prompt",
+            default="blurry, ugly, mask",
+        ),
         enable_face_inpainting: bool = Input(
             description="Inpaint small faces to improve resolution. Will slow down inference.",
             default=False,
@@ -342,7 +348,11 @@ class Predictor(BasePredictor):
                 "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
                 torch_dtype=torch.float16,
                 variant="fp16"
-            ).to("cuda")
+            )
+            # Load lora into inpainting model
+            self.load_trained_weights(Lora_url, self.inpaint_pipe)
+            print("Loaded inpaint_pipe trained weights")
+            self.inpaint_pipe.to("cuda")
 
             '''
                 self.inpaint_pipe = StableDiffusionXLInpaintPipeline(
@@ -373,7 +383,6 @@ class Predictor(BasePredictor):
                 variant="fp16",
             )
             self.refiner.to("cuda")
-
 
         else :
             print("Loading sdxl txt2img pipeline...")
@@ -512,7 +521,8 @@ class Predictor(BasePredictor):
                     image, 
                     guidance_scale=guidance_scale, 
                     lora_paths=[Lora_url],
-                    prompt='a bright green square', # prompt[i],
+                    prompt=face_inpainting_prompt, # prompt[i],
+                    negative_prompt=face_inpainting_negative_prompt,
                     save_working_images=False,
                     max_face_size = max_face_inpaint_size)
                                             for i, image in enumerate(output.images)]
@@ -523,6 +533,7 @@ class Predictor(BasePredictor):
             self.refiner.watermark = watermark_cache
 
         output_paths = []
+        print(output)
         for i, image in enumerate(output):
             if encryptedOutput:
                 # TODO need to switch to asymmetric encryption 
@@ -530,6 +541,7 @@ class Predictor(BasePredictor):
                 # TODO need to check security assumptions of writing file temporarily
                 # Save the image in a standard format (e.g., PNG) to a temporary file
                 temp_image_path = f"/tmp/temp_image-{i}.png"
+                print(i)
                 image.save(temp_image_path, 'PNG')  # Assuming 'image' is a PIL Image object
 
                 # Read the saved image file in binary mode

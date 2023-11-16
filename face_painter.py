@@ -121,7 +121,8 @@ class FacePainter:
     def paint_faces(
         self, 
         image, 
-        prompt, 
+        prompt,
+        negative_prompt,
         guidance_scale=4.5, 
         lora_paths=[], 
         face_detect_image=None,
@@ -137,10 +138,12 @@ class FacePainter:
 
         if lora_paths:
             print('got lora paths', lora_paths)
-            prompt = 'a bright green square, bright green square'
+            # prompt = 'a bright green square, bright green square'
             # prompt = f'"<1>" face. {prompt.replace("<1>", "").replace("<2>", "")}'
         else:
-            prompt = 'a bright green square, bright green square'
+            print('no lora paths', lora_paths)
+            pass
+            # prompt = 'a bright green square, bright green square'
             # prompt = f' face. {prompt.replace("<1>", "").replace("<2>", "")}'
         for i, mask in enumerate(
             sorted(self.masks, key=lambda x: x.face_area.w * x.face_area.h, reverse=True)
@@ -168,7 +171,7 @@ class FacePainter:
                 # TODO(anna) these args may be off
                 # inpaint_pipe(**inpainting_args, **sdxl_kwargs)
                 prompt=prompt,
-                negative_prompt="frame, mask, surgical, ui, ugly, distorted eyes, deformed iris, toothless, squint, deformed iris, deformed pupils, low quality, jpeg artifacts, ugly, mutilated",
+                negative_prompt=negative_prompt, # "frame, mask, surgical, ui, ugly, distorted eyes, deformed iris, toothless, squint, deformed iris, deformed pupils, low quality, jpeg artifacts, ugly, mutilated",
                 image=mask.image(self.image),
                 mask_image=mask.mask,
                 guidance_scale=guidance_scale,
