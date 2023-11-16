@@ -192,6 +192,7 @@ class Predictor(BasePredictor):
         self,
         lora_1: str = Input(
             description="URL of trained lora model",
+            default="https://replicate.delivery/pbxt/TJLLieDQVNWfM0o2UOjh103bt1XJp1hV4fKjMtz17RAtBnZjA/trained_model.tar",
         ),
         prompt: str = Input(
             description="Input prompt. If encryptedInput is true, this should be encrypted",
