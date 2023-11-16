@@ -208,8 +208,11 @@ class Predictor(BasePredictor):
     @torch.inference_mode()
     def predict(
         self,
-        Lora_url: str = Input(
-            description="Load Lora model",
+        lora_1: str = Input(
+            description="URL of trained lora model",
+        ),
+        lora_2: str = Input(
+            description="URL of trained lora 2. Will be used for face in painting.",
         ),
         prompt: str = Input(
             description="Input prompt. If encryptedInput is true, this should be encrypted",
@@ -326,7 +329,7 @@ class Predictor(BasePredictor):
                 variant="fp16",
             )
         
-            self.load_trained_weights(Lora_url, self.txt2img_pipe)
+            self.load_trained_weights(lora_1, self.txt2img_pipe)
             self.txt2img_pipe.to("cuda")
             self.is_lora = True
 
@@ -350,23 +353,9 @@ class Predictor(BasePredictor):
                 variant="fp16"
             )
             # Load lora into inpainting model
-            self.load_trained_weights(Lora_url, self.inpaint_pipe)
+            self.load_trained_weights(lora_2, self.inpaint_pipe)
             print("Loaded inpaint_pipe trained weights")
             self.inpaint_pipe.to("cuda")
-
-            '''
-                self.inpaint_pipe = StableDiffusionXLInpaintPipeline(
-                vae=self.txt2img_pipe.vae,
-                text_encoder=self.txt2img_pipe.text_encoder,
-                text_encoder_2=self.txt2img_pipe.text_encoder_2,
-                tokenizer=self.txt2img_pipe.tokenizer,
-                tokenizer_2=self.txt2img_pipe.tokenizer_2,
-                unet=self.txt2img_pipe.unet,
-                scheduler=self.txt2img_pipe.scheduler,
-            )
-            self.inpaint_pipe.to("cuda")
-            '''
-
 
             print("Initializing face painter...")
             self.face_painter = FacePainter(self.inpaint_pipe)
@@ -520,13 +509,15 @@ class Predictor(BasePredictor):
             inpainted_images = [self.face_painter.paint_faces(
                     image, 
                     guidance_scale=guidance_scale, 
-                    lora_paths=[Lora_url],
+                    lora_paths=[lora_1],
                     prompt=face_inpainting_prompt, # prompt[i],
                     negative_prompt=face_inpainting_negative_prompt,
                     save_working_images=False,
                     max_face_size = max_face_inpaint_size)
                                             for i, image in enumerate(output.images)]
             output = inpainted_images
+        else:
+            output = output.images
 
         if not apply_watermark:
             pipe.watermark = watermark_cache

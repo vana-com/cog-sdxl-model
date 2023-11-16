@@ -163,8 +163,6 @@ class FacePainter:
                 self.image.save(f"./tmp/{time.time()}_working_{i}.png")
                 mask.mask.save(f"./tmp/{time.time()}_mask_{i}.png")
                 mask.image(self.image).save(f"./tmp/{time.time()}_image_{i}.png")
-
-            # Generate with new model
             
             # In-paint the image
             output = self.inpaint_pipe(
@@ -181,5 +179,6 @@ class FacePainter:
             )
 
             self._paste(output.images[0], mask.mask_area)
-            #self._paste(output["images"][0], mask.mask_area)
+            # Replace with line below when testing
+            # self._paste(output["images"][0], mask.mask_area)
         return self.image
