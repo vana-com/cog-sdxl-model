@@ -193,9 +193,6 @@ class Predictor(BasePredictor):
         lora_1: str = Input(
             description="URL of trained lora model",
         ),
-        lora_2: str = Input(
-            description="URL of trained lora 2. Will be used for face in painting.",
-        ),
         prompt: str = Input(
             description="Input prompt. If encryptedInput is true, this should be encrypted",
             default="An TOK riding a rainbow unicorn",
@@ -340,7 +337,7 @@ class Predictor(BasePredictor):
                     variant="fp16"
                 )
                 # Load lora into inpainting model
-                self.load_trained_weights(lora_2, self.inpaint_pipe)
+                self.load_trained_weights(lora_1, self.inpaint_pipe)
                 print("Loaded inpaint_pipe trained weights")
                 self.inpaint_pipe.to("cuda")
 
