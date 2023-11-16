@@ -91,74 +91,49 @@ class Predictor(BasePredictor):
 
         local_weights_cache = "./trained-model"
 
-        # load UNET
-        print("Loading fine-tuned model")
-        self.is_lora = False
 
-        maybe_unet_path = os.path.join(local_weights_cache, "unet.safetensors")
+        print("Loading Unet LoRA")
 
-        if not os.path.exists(maybe_unet_path):
-            print("Does not have Unet. Assume we are using LoRA")
-            pass
-        '''
-        if not os.path.exists(maybe_unet_path):
-            print("Does not have Unet. Assume we are using LoRA")
-            self.is_lora = True
+        unet = pipe.unet
 
-        if not self.is_lora:
-            print("Loading Unet")
+        tensors = load_file(os.path.join(local_weights_cache, "lora.safetensors"))
 
-            new_unet_params = load_file(
-                os.path.join(local_weights_cache, "unet.safetensors")
+        unet = pipe.unet
+        unet_lora_attn_procs = {}
+        name_rank_map = {}
+        for tk, tv in tensors.items():
+            # up is N, d
+            if tk.endswith("up.weight"):
+                proc_name = ".".join(tk.split(".")[:-3])
+                r = tv.shape[1]
+                name_rank_map[proc_name] = r
+
+        for name, attn_processor in unet.attn_processors.items():
+            cross_attention_dim = (
+                None
+                if name.endswith("attn1.processor")
+                else unet.config.cross_attention_dim
             )
-            sd = pipe.unet.state_dict()
-            sd.update(new_unet_params)
-            pipe.unet.load_state_dict(sd)
-        '''
+            if name.startswith("mid_block"):
+                hidden_size = unet.config.block_out_channels[-1]
+            elif name.startswith("up_blocks"):
+                block_id = int(name[len("up_blocks.")])
+                hidden_size = list(reversed(unet.config.block_out_channels))[
+                    block_id
+                ]
+            elif name.startswith("down_blocks"):
+                block_id = int(name[len("down_blocks.")])
+                hidden_size = unet.config.block_out_channels[block_id]
 
-        if True:
-            print("Loading Unet LoRA")
+            module = LoRAAttnProcessor2_0(
+                hidden_size=hidden_size,
+                cross_attention_dim=cross_attention_dim,
+                rank=name_rank_map[name],
+            )
+            unet_lora_attn_procs[name] = module.to("cuda")
 
-            unet = pipe.unet
-
-            tensors = load_file(os.path.join(local_weights_cache, "lora.safetensors"))
-
-            unet = pipe.unet
-            unet_lora_attn_procs = {}
-            name_rank_map = {}
-            for tk, tv in tensors.items():
-                # up is N, d
-                if tk.endswith("up.weight"):
-                    proc_name = ".".join(tk.split(".")[:-3])
-                    r = tv.shape[1]
-                    name_rank_map[proc_name] = r
-
-            for name, attn_processor in unet.attn_processors.items():
-                cross_attention_dim = (
-                    None
-                    if name.endswith("attn1.processor")
-                    else unet.config.cross_attention_dim
-                )
-                if name.startswith("mid_block"):
-                    hidden_size = unet.config.block_out_channels[-1]
-                elif name.startswith("up_blocks"):
-                    block_id = int(name[len("up_blocks.")])
-                    hidden_size = list(reversed(unet.config.block_out_channels))[
-                        block_id
-                    ]
-                elif name.startswith("down_blocks"):
-                    block_id = int(name[len("down_blocks.")])
-                    hidden_size = unet.config.block_out_channels[block_id]
-
-                module = LoRAAttnProcessor2_0(
-                    hidden_size=hidden_size,
-                    cross_attention_dim=cross_attention_dim,
-                    rank=name_rank_map[name],
-                )
-                unet_lora_attn_procs[name] = module.to("cuda")
-
-            unet.set_attn_processor(unet_lora_attn_procs)
-            unet.load_state_dict(tensors, strict=False)
+        unet.set_attn_processor(unet_lora_attn_procs)
+        unet.load_state_dict(tensors, strict=False)
 
         # load text
         handler = TokenEmbeddingsHandler(
