@@ -96,6 +96,11 @@ class Predictor(BasePredictor):
         self.is_lora = False
 
         maybe_unet_path = os.path.join(local_weights_cache, "unet.safetensors")
+
+        if not os.path.exists(maybe_unet_path):
+            print("Does not have Unet. Assume we are using LoRA")
+            pass
+        '''
         if not os.path.exists(maybe_unet_path):
             print("Does not have Unet. Assume we are using LoRA")
             self.is_lora = True
@@ -109,8 +114,9 @@ class Predictor(BasePredictor):
             sd = pipe.unet.state_dict()
             sd.update(new_unet_params)
             pipe.unet.load_state_dict(sd)
+        '''
 
-        else:
+        if True:
             print("Loading Unet LoRA")
 
             unet = pipe.unet
@@ -163,6 +169,8 @@ class Predictor(BasePredictor):
         # load params
         with open(os.path.join(local_weights_cache, "special_params.json"), "r") as f:
             params = json.load(f)
+
+        print('token_map', params)
         self.token_map = params
 
         self.tuned_model = True            
@@ -228,7 +236,7 @@ class Predictor(BasePredictor):
         ),
         face_inpainting_negative_prompt: str = Input(
             description="Face inpainting negative prompt",
-            default="blurry, ugly, mask",
+            default="frame, mask, surgical, ui, ugly, distorted eyes, deformed iris, toothless, squint, deformed iris, deformed pupils, low quality, jpeg artifacts, ugly, mutilated",
         ),
         enable_face_inpainting: bool = Input(
             description="Inpaint small faces to improve resolution. Will slow down inference.",
