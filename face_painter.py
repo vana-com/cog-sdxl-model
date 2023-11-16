@@ -12,7 +12,7 @@ class ImageArea:
 
 class FacePainter:
     class Mask:
-        def __init__(self, face_area: ImageArea, max_width: int, max_height: int, zoom: int=640):
+        def __init__(self, face_area: ImageArea, max_width: int, max_height: int, zoom: int=1024):
             self.face_area = face_area
             self.max_width = max_width
             self.max_height = max_height
@@ -106,11 +106,11 @@ class FacePainter:
                     )
                 )
 
-    def _paste(self, new_image, area: ImageArea):
+    def _paste(self, new_image, area: ImageArea, gradient_size = 30):
 
         new_image = new_image.resize([area.w, area.h])
         paste_mask = Image.new('L', new_image.size, 255)
-        gradient_size = 15
+        # gradient_size = 30
         for i in range(gradient_size):
             alpha = 255 * (i + 1) // (gradient_size + 1)
             ImageDraw.Draw(paste_mask).rectangle(
@@ -127,7 +127,8 @@ class FacePainter:
         lora_paths=[], 
         face_detect_image=None,
         save_working_images=False,
-        max_face_size=None
+        max_face_size=None,
+        gradient_size=30
     ):
         
         # self.inpaint_pipe.enable_vae_slicing = False
@@ -178,7 +179,7 @@ class FacePainter:
                 height=mask.zoomed_size,
             )
 
-            self._paste(output.images[0], mask.mask_area)
+            self._paste(output.images[0], mask.mask_area, gradient_size)
             # Replace with line below when testing
             # self._paste(output["images"][0], mask.mask_area)
         return self.image

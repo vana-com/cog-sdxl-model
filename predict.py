@@ -44,7 +44,6 @@ from dataset_and_utils import TokenEmbeddingsHandler
 SDXL_MODEL_CACHE = "./sdxl-cache"
 SDXL_INPAINTING_MODEL_CACHE = "./sdxl-inpainting-cache"
 REFINER_MODEL_CACHE = "./refiner-cache"
-SAFETY_CACHE = "./safety-cache"
 FEATURE_EXTRACTOR = "./feature-extractor"
 SDXL_URL = "https://weights.replicate.delivery/default/sdxl/sdxl-vae-fix-1.0.tar"
 SDXL_INPAINTING_URL = "" # TODO cache in painting model later
@@ -205,6 +204,10 @@ class Predictor(BasePredictor):
             description="Input Negative Prompt",
             default="",
         ),
+        enable_face_inpainting: bool = Input(
+            description="Inpaint small faces to improve resolution. Will slow down inference.",
+            default=False,
+        ),
         face_inpainting_prompt: str = Input(
             description="Face inpainting prompt",
             default="<s0><s1> face",
@@ -213,13 +216,13 @@ class Predictor(BasePredictor):
             description="Face inpainting negative prompt",
             default="frame, mask, surgical, ui, ugly, distorted eyes, deformed iris, toothless, squint, deformed iris, deformed pupils, low quality, jpeg artifacts, ugly, mutilated",
         ),
-        enable_face_inpainting: bool = Input(
-            description="Inpaint small faces to improve resolution. Will slow down inference.",
-            default=False,
-        ),
         max_face_inpaint_size: int = Input(
             description="Max size of face to inpaint. Recommended: 135-400. If it's too high, may get weird portraits.",
             default=300,
+        ),
+        inpainting_gradient_size: int = Input(
+            description="Gradient to blur face in painting. Increase to make transition smoother",
+            default=30,
         ),
         encryptedInput: bool = Input(
             description="Whether prompt is encrypted",
@@ -328,20 +331,21 @@ class Predictor(BasePredictor):
             )
             self.img2img_pipe.to("cuda")
 
-            # TODO(anna) Cache this model so we don't have to load it everytime
-            print("Loading SDXL inpaint pipeline...")
-            self.inpaint_pipe = AutoPipelineForInpainting.from_pretrained(
-                "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
-                torch_dtype=torch.float16,
-                variant="fp16"
-            )
-            # Load lora into inpainting model
-            self.load_trained_weights(lora_2, self.inpaint_pipe)
-            print("Loaded inpaint_pipe trained weights")
-            self.inpaint_pipe.to("cuda")
+            if enable_face_inpainting:
+                # TODO(anna) Cache this model so we don't have to load it everytime
+                print("Loading SDXL inpaint pipeline...")
+                self.inpaint_pipe = AutoPipelineForInpainting.from_pretrained(
+                    "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
+                    torch_dtype=torch.float16,
+                    variant="fp16"
+                )
+                # Load lora into inpainting model
+                self.load_trained_weights(lora_2, self.inpaint_pipe)
+                print("Loaded inpaint_pipe trained weights")
+                self.inpaint_pipe.to("cuda")
 
-            print("Initializing face painter...")
-            self.face_painter = FacePainter(self.inpaint_pipe)
+                print("Initializing face painter...")
+                self.face_painter = FacePainter(self.inpaint_pipe)
 
             print("Loading SDXL refiner pipeline...")
 
@@ -420,7 +424,6 @@ class Predictor(BasePredictor):
             prompt = cipher_suite.decrypt(prompt).decode()
             print(f"Decrypted prompt: {prompt}")
 
-
         if image and mask:
             print("inpainting mode")
             loaded_image = self.load_image(image)
@@ -487,16 +490,18 @@ class Predictor(BasePredictor):
             output = self.refiner(**common_args, **refiner_kwargs)
 
         if enable_face_inpainting:
-            print("inpainting mode")
-            # May need to download lora
             inpainted_images = [self.face_painter.paint_faces(
                     image, 
                     guidance_scale=guidance_scale, 
-                    lora_paths=[lora_1],
+                    # Note lora is passed but not directly used by face_painter right now
+                    # instead, the lora is included in the face_painter pipeline
+                    # keep lora paths like this as it will allow for two person outputs
+                    lora_paths=[lora_1], 
                     prompt=face_inpainting_prompt, # prompt[i],
                     negative_prompt=face_inpainting_negative_prompt,
                     save_working_images=False,
-                    max_face_size = max_face_inpaint_size)
+                    max_face_size = max_face_inpaint_size,
+                    gradient_size=inpainting_gradient_size)
                                             for i, image in enumerate(output.images)]
             output = inpainted_images
         else:
