@@ -90,11 +90,8 @@ class Predictor(BasePredictor):
 
         local_weights_cache = "./trained-model"
 
-
         print("Loading Unet LoRA")
-
         unet = pipe.unet
-
         tensors = load_file(os.path.join(local_weights_cache, "lora.safetensors"))
 
         unet = pipe.unet
@@ -200,7 +197,7 @@ class Predictor(BasePredictor):
         ),
         negative_prompt: str = Input(
             description="Input Negative Prompt",
-            default="",
+            default="low quality, duplicate faces, deformed iris, distorted eyes, text, cropped, out of frame, jpeg artifacts, duplicate, mutilated, extra fingers, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, clone, disfigured, fused fingers",
         ),
         enable_face_inpainting: bool = Input(
             description="Inpaint small faces to improve resolution. Will slow down inference.",
@@ -218,9 +215,27 @@ class Predictor(BasePredictor):
             description="Max size of face to inpaint. Recommended: 135-400. If it's too high, may get weird portraits.",
             default=300,
         ),
-        inpainting_gradient_size: int = Input(
-            description="Gradient to blur face in painting. Increase to make transition smoother",
-            default=30,
+        inpainting_gradient_percent_size: float = Input(
+            description="Percent edge to blur to make transition smoother. Recommended: 0.1",
+            default=0.1,
+        ),
+        inpainting_guidance_scale: float = Input(
+            description="Guidance scale for inpainting. Recommended: 4.5",
+            default=4.5,
+        ),
+        inpainting_num_inference_steps: int = Input(
+            description="Inference steps inpainting. Recommended: 28",
+            default=28,
+        ),
+        inpainting_lora_scale: float = Input(
+            description="LoRA additive scale for face. Recommended:0.8-0.95",
+            ge=0.0,
+            le=1.0,
+            default=0.9,
+        ),
+        face_padding: int = Input(
+            description="How much to pad the face for inpainting. Recommended: 0-20",
+            default=0,
         ),
         encryptedInput: bool = Input(
             description="Whether prompt is encrypted",
@@ -302,107 +317,73 @@ class Predictor(BasePredictor):
             default=0.6,
         ),
     ) -> List[Path]:
-        lora = True
-        if lora == True :
-            self.is_lora = True
-            print("Loading sdxl txt2img pipeline...")
-            self.txt2img_pipe = DiffusionPipeline.from_pretrained(
-                SDXL_MODEL_CACHE,
-                torch_dtype=torch.float16,
-                use_safetensors=True,
-                variant="fp16",
-            )
-        
-            self.load_trained_weights(lora_1, self.txt2img_pipe)
-            self.txt2img_pipe.to("cuda")
-            self.is_lora = True
 
-            print("Loading SDXL img2img pipeline...")
-            self.img2img_pipe = StableDiffusionXLImg2ImgPipeline(
-                vae=self.txt2img_pipe.vae,
-                text_encoder=self.txt2img_pipe.text_encoder,
-                text_encoder_2=self.txt2img_pipe.text_encoder_2,
-                tokenizer=self.txt2img_pipe.tokenizer,
-                tokenizer_2=self.txt2img_pipe.tokenizer_2,
-                unet=self.txt2img_pipe.unet,
-                scheduler=self.txt2img_pipe.scheduler,
-            )
-            self.img2img_pipe.to("cuda")
+        self.is_lora = True
+        print("Loading sdxl txt2img pipeline...")
+        self.txt2img_pipe = DiffusionPipeline.from_pretrained(
+            SDXL_MODEL_CACHE,
+            torch_dtype=torch.float16,
+            use_safetensors=True,
+            variant="fp16",
+        )
+    
+        self.load_trained_weights(lora_1, self.txt2img_pipe)
+        self.txt2img_pipe.to("cuda")
+        self.is_lora = True
 
-            if enable_face_inpainting:
-                # TODO(anna) Cache this model so we don't have to load it everytime
-                print("Loading SDXL inpaint pipeline...")
-                self.inpaint_pipe = AutoPipelineForInpainting.from_pretrained(
-                    "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
-                    torch_dtype=torch.float16,
-                    variant="fp16"
-                )
-                # Load lora into inpainting model
-                self.load_trained_weights(lora_1, self.inpaint_pipe)
-                print("Loaded inpaint_pipe trained weights")
-                self.inpaint_pipe.to("cuda")
+        print("Loading SDXL img2img pipeline...")
+        self.img2img_pipe = StableDiffusionXLImg2ImgPipeline(
+            vae=self.txt2img_pipe.vae,
+            text_encoder=self.txt2img_pipe.text_encoder,
+            text_encoder_2=self.txt2img_pipe.text_encoder_2,
+            tokenizer=self.txt2img_pipe.tokenizer,
+            tokenizer_2=self.txt2img_pipe.tokenizer_2,
+            unet=self.txt2img_pipe.unet,
+            scheduler=self.txt2img_pipe.scheduler,
+        )
+        self.img2img_pipe.to("cuda")
 
-                print("Initializing face painter...")
-                self.face_painter = FacePainter(self.inpaint_pipe)
-
-            print("Loading SDXL refiner pipeline...")
-
-            print("Loading refiner pipeline...")
-            self.refiner = DiffusionPipeline.from_pretrained(
-                "refiner-cache",
-                text_encoder_2=self.txt2img_pipe.text_encoder_2,
-                vae=self.txt2img_pipe.vae,
-                torch_dtype=torch.float16,
-                use_safetensors=True,
-                variant="fp16",
-            )
-            self.refiner.to("cuda")
-
-        else :
-            print("Loading sdxl txt2img pipeline...")
-            self.txt2img_pipe = DiffusionPipeline.from_pretrained(
-                SDXL_MODEL_CACHE,
-                torch_dtype=torch.float16,
-                use_safetensors=True,
-                variant="fp16",
-            )
-            self.is_lora = False
-
-            self.txt2img_pipe.to("cuda")
-
-            print("Loading SDXL img2img pipeline...")
-            self.img2img_pipe = StableDiffusionXLImg2ImgPipeline(
-                vae=self.txt2img_pipe.vae,
-                text_encoder=self.txt2img_pipe.text_encoder,
-                text_encoder_2=self.txt2img_pipe.text_encoder_2,
-                tokenizer=self.txt2img_pipe.tokenizer,
-                tokenizer_2=self.txt2img_pipe.tokenizer_2,
-                unet=self.txt2img_pipe.unet,
-                scheduler=self.txt2img_pipe.scheduler,
-            )
-            self.img2img_pipe.to("cuda")
-
+        if enable_face_inpainting:
+            # TODO(anna) Cache this model so we don't have to load it everytime
             print("Loading SDXL inpaint pipeline...")
-            self.inpaint_pipe = StableDiffusionXLInpaintPipeline(
-                vae=self.txt2img_pipe.vae,
-                text_encoder=self.txt2img_pipe.text_encoder,
-                text_encoder_2=self.txt2img_pipe.text_encoder_2,
-                tokenizer=self.txt2img_pipe.tokenizer,
-                tokenizer_2=self.txt2img_pipe.tokenizer_2,
-                unet=self.txt2img_pipe.unet,
-                scheduler=self.txt2img_pipe.scheduler,
-            )
-            self.inpaint_pipe.to("cuda")
-            print("Loading refiner pipeline...")
-            self.refiner = DiffusionPipeline.from_pretrained(
-                "refiner-cache",
-                text_encoder_2=self.txt2img_pipe.text_encoder_2,
-                vae=self.txt2img_pipe.vae,
+            self.inpaint_pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
+                "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
                 torch_dtype=torch.float16,
-                use_safetensors=True,
-                variant="fp16",
+                variant="fp16"
             )
-            self.refiner.to("cuda")
+            # Load lora into inpainting model
+            self.load_trained_weights(lora_1, self.inpaint_pipe)
+            print("Loaded inpaint_pipe trained weights")
+            self.inpaint_pipe.to("cuda")
+
+            '''
+            self.inpaint_pipe = AutoPipelineForInpainting.from_pretrained(
+                "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
+                torch_dtype=torch.float16,
+                variant="fp16"
+            )
+            # Load lora into inpainting model
+            self.load_trained_weights(lora_1, self.inpaint_pipe)
+            print("Loaded inpaint_pipe trained weights")
+            self.inpaint_pipe.to("cuda")
+            '''
+            
+
+            print("Initializing face painter...")
+            self.face_painter = FacePainter(self.inpaint_pipe)
+
+        print("Loading SDXL refiner pipeline...")
+
+        print("Loading refiner pipeline...")
+        self.refiner = DiffusionPipeline.from_pretrained(
+            "refiner-cache",
+            text_encoder_2=self.txt2img_pipe.text_encoder_2,
+            vae=self.txt2img_pipe.vae,
+            torch_dtype=torch.float16,
+            use_safetensors=True,
+            variant="fp16",
+        )
+        self.refiner.to("cuda")
 
         """Run a single prediction on the model"""
         if seed is None:
@@ -490,16 +471,20 @@ class Predictor(BasePredictor):
         if enable_face_inpainting:
             inpainted_images = [self.face_painter.paint_faces(
                     image, 
-                    guidance_scale=guidance_scale, 
                     # Note lora is passed but not directly used by face_painter right now
                     # instead, the lora is included in the face_painter pipeline
                     # keep lora paths like this as it will allow for two person outputs
                     lora_paths=[lora_1], 
+                    seed=seed,
+                    lora_scale=inpainting_lora_scale,
                     prompt=face_inpainting_prompt, # prompt[i],
                     negative_prompt=face_inpainting_negative_prompt,
+                    inpainting_guidance_scale=inpainting_guidance_scale, 
+                    inpainting_num_inference_steps=inpainting_num_inference_steps,
                     save_working_images=False,
                     max_face_size = max_face_inpaint_size,
-                    gradient_size=inpainting_gradient_size)
+                    gradient_percent_size=inpainting_gradient_percent_size,
+                    face_padding=face_padding)
                                             for i, image in enumerate(output.images)]
             output = inpainted_images
         else:
