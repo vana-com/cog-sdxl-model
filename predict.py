@@ -26,7 +26,6 @@ from diffusers.utils import load_image
 from safetensors import safe_open
 from safetensors.torch import load_file
 from transformers import CLIPImageProcessor
-from cryptography.fernet import Fernet
 from face_painter import FacePainter
 
 import json
@@ -50,11 +49,6 @@ SDXL_INPAINTING_URL = "" # TODO cache in painting model later
 REFINER_URL = (
     "https://weights.replicate.delivery/default/sdxl/refiner-no-vae-no-encoder-1.0.tar"
 )
-
-# Currently using symmetric encryption
-# But we should use asymmetric encryption
-# This would be NODE_PRIVATE_KEY
-NODE_KEY = b'xOBP_J1N6J1y7a0I9MHJ7VbVbV_a7BzI2s4O5pLKZKU='
 
 class KarrasDPM:
     def from_config(config):
@@ -141,7 +135,6 @@ class Predictor(BasePredictor):
         with open(os.path.join(local_weights_cache, "special_params.json"), "r") as f:
             params = json.load(f)
 
-        print('token_map', params)
         self.token_map = params
 
         self.tuned_model = True            
@@ -192,7 +185,7 @@ class Predictor(BasePredictor):
             default="https://replicate.delivery/pbxt/TJLLieDQVNWfM0o2UOjh103bt1XJp1hV4fKjMtz17RAtBnZjA/trained_model.tar",
         ),
         prompt: str = Input(
-            description="Input prompt. If encryptedInput is true, this should be encrypted",
+            description="Input prompt",
             default="An TOK riding a rainbow unicorn",
         ),
         negative_prompt: str = Input(
@@ -236,18 +229,6 @@ class Predictor(BasePredictor):
         face_padding: int = Input(
             description="How much to pad the face for inpainting. Recommended: 0-20",
             default=0,
-        ),
-        encryptedInput: bool = Input(
-            description="Whether prompt is encrypted",
-            default=False,
-        ),
-        encryptedOutput: bool = Input(
-            description="Whether image output should be encrypted",
-            default=False,
-        ),
-        userPublicKey: str = Input(
-            description="The public key of the user, used to encrypt image. Only used if encryptedOutput is on",
-            default='4KRWKwyJCi5RyDQ10YmTUL4yS0XkyBFpr_BeB0XGQlM=',
         ),
         image: Path = Input(
             description="Input image for img2img or inpaint mode",
@@ -345,7 +326,7 @@ class Predictor(BasePredictor):
 
         if enable_face_inpainting:
             # TODO(anna) Cache this model so we don't have to load it everytime
-            print("Loading SDXL inpaint pipeline...")
+            print("Loading SDXL face inpaint pipeline...")
             self.inpaint_pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
                 "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
                 torch_dtype=torch.float16,
@@ -353,15 +334,12 @@ class Predictor(BasePredictor):
             )
             # Load lora into inpainting model
             self.load_trained_weights(lora_1, self.inpaint_pipe)
-            print("Loaded inpaint_pipe trained weights")
             self.inpaint_pipe.to("cuda")
 
-            print("Initializing face painter...")
             self.face_painter = FacePainter(self.inpaint_pipe)
 
         print("Loading SDXL refiner pipeline...")
 
-        
         print("Loading refiner pipeline...")
         self.refiner = DiffusionPipeline.from_pretrained(
             "refiner-cache",
@@ -384,12 +362,6 @@ class Predictor(BasePredictor):
             for k, v in self.token_map.items():
                 prompt = prompt.replace(k, v)
         print(f"Prompt: {prompt}")
-
-        # Decrypt the encrypted prompt
-        if encryptedInput:
-            cipher_suite = Fernet(NODE_KEY)
-            prompt = cipher_suite.decrypt(prompt).decode()
-            print(f"Decrypted prompt: {prompt}")
 
         if image and mask:
             print("inpainting mode")
@@ -456,6 +428,14 @@ class Predictor(BasePredictor):
 
             output = self.refiner(**common_args, **refiner_kwargs)
 
+        face_inpainting_pipe_args = {
+            "prompt": [prompt] * num_outputs,
+            "negative_prompt": [negative_prompt] * num_outputs,
+            "guidance_scale": guidance_scale,
+            "generator": generator,
+            "num_inference_steps": num_inference_steps,
+        }
+
         if enable_face_inpainting:
             inpainted_images = [self.face_painter.paint_faces(
                     image, 
@@ -485,35 +465,8 @@ class Predictor(BasePredictor):
         output_paths = []
         print(output)
         for i, image in enumerate(output):
-            if encryptedOutput:
-                # TODO need to switch to asymmetric encryption 
-                user_cipher_suite = Fernet(userPublicKey.encode())
-                # TODO need to check security assumptions of writing file temporarily
-                # Save the image in a standard format (e.g., PNG) to a temporary file
-                temp_image_path = f"/tmp/temp_image-{i}.png"
-                print(i)
-                image.save(temp_image_path, 'PNG')  # Assuming 'image' is a PIL Image object
-
-                # Read the saved image file in binary mode
-                with open(temp_image_path, 'rb') as file:
-                    image_data = file.read()
-
-                # Encrypt the binary data of the whole file
-                encryptedImage = user_cipher_suite.encrypt(image_data)
-
-                # Save the encrypted data to the final output file
-                output_path = f"/tmp/encrypted_out-{i}.enc"
-                with open(output_path, 'wb') as file_out:
-                    file_out.write(encryptedImage)
-
-                # Append the path for record-keeping
-                output_paths.append(Path(output_path))
-
-                # Delete the temporary image file
-                os.remove(temp_image_path)
-            else: 
-                output_path = f"/tmp/out-{i}.png"
-                image.save(output_path)
-                output_paths.append(Path(output_path))
+            output_path = f"/tmp/out-{i}.png"
+            image.save(output_path)
+            output_paths.append(Path(output_path))
 
         return output_paths
