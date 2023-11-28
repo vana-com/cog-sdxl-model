@@ -356,24 +356,12 @@ class Predictor(BasePredictor):
             print("Loaded inpaint_pipe trained weights")
             self.inpaint_pipe.to("cuda")
 
-            '''
-            self.inpaint_pipe = AutoPipelineForInpainting.from_pretrained(
-                "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
-                torch_dtype=torch.float16,
-                variant="fp16"
-            )
-            # Load lora into inpainting model
-            self.load_trained_weights(lora_1, self.inpaint_pipe)
-            print("Loaded inpaint_pipe trained weights")
-            self.inpaint_pipe.to("cuda")
-            '''
-            
-
             print("Initializing face painter...")
             self.face_painter = FacePainter(self.inpaint_pipe)
 
         print("Loading SDXL refiner pipeline...")
 
+        
         print("Loading refiner pipeline...")
         self.refiner = DiffusionPipeline.from_pretrained(
             "refiner-cache",
@@ -475,7 +463,7 @@ class Predictor(BasePredictor):
                     # instead, the lora is included in the face_painter pipeline
                     # keep lora paths like this as it will allow for two person outputs
                     lora_paths=[lora_1], 
-                    seed=seed,
+                    generator=generator, # Includes seed
                     lora_scale=inpainting_lora_scale,
                     prompt=face_inpainting_prompt, # prompt[i],
                     negative_prompt=face_inpainting_negative_prompt,

@@ -126,7 +126,7 @@ class FacePainter:
         image, 
         prompt,
         negative_prompt,
-        seed=1,
+        generator,
         lora_scale=0.9,
         inpainting_guidance_scale=4.5, 
         inpainting_num_inference_steps=28,
@@ -138,6 +138,7 @@ class FacePainter:
         face_padding=0,
     ):
         
+        # Disable vae            
         self.inpaint_pipe.enable_vae_slicing = False
         self.image = image.copy()
         if face_detect_image is None:
@@ -177,7 +178,7 @@ class FacePainter:
             output = self.inpaint_pipe(
                 # TODO(anna) these args may be off
                 # inpaint_pipe(**inpainting_args, **sdxl_kwargs)
-                seed=seed,
+                generator=generator,
                 cross_attention_kwargs={"scale": lora_scale},
                 prompt=prompt,
                 negative_prompt=negative_prompt, # "frame, mask, surgical, ui, ugly, distorted eyes, deformed iris, toothless, squint, deformed iris, deformed pupils, low quality, jpeg artifacts, ugly, mutilated",
