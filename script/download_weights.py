@@ -3,7 +3,7 @@
 # internet, which will take a long time.
 
 import torch
-from diffusers import AutoencoderKL, DiffusionPipeline
+from diffusers import AutoencoderKL, DiffusionPipeline, AutoPipelineForInpainting
 from diffusers.pipelines.stable_diffusion.safety_checker import (
     StableDiffusionSafetyChecker,
 )
@@ -30,6 +30,14 @@ pipe = DiffusionPipeline.from_pretrained(
 )
 
 pipe.save_pretrained("./sdxl-cache", safe_serialization=True)
+
+pipe = AutoPipelineForInpainting.from_pretrained(
+    "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
+    torch_dtype=torch.float16,
+    variant="fp16"
+)
+
+pipe.save_pretrained("./sdxl-inpainting-cache", safe_serialization=True)
 
 pipe = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0",

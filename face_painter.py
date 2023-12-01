@@ -115,8 +115,13 @@ class FacePainter:
         print('Gradient_size', gradient_size, gradient_percent_size, "%" )
         for i in range(gradient_size):
             alpha = 255 * (i + 1) // (gradient_size + 1)
+            x0, y0 = i, i
+            x1, y1 = paste_mask.size[0] - 1 - i, paste_mask.size[1] - 1 - i
+            # Ensure that x1 and y1 are always greater than or equal to x0 and y0
+            if x1 < x0 or y1 < y0:
+                break
             ImageDraw.Draw(paste_mask).rectangle(
-                [i, i, paste_mask.size[0] - 1 - i, paste_mask.size[1] - 1 - i], outline=alpha, width=1
+                [x0, y0, x1, y1], outline=alpha, width=1
             )
         
         self.image.paste(new_image, (area.x, area.y), paste_mask)
