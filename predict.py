@@ -198,27 +198,27 @@ class Predictor(BasePredictor):
         ),
         face_inpainting_prompt: str = Input(
             description="Face inpainting prompt",
-            default="<s0><s1> face",
+            default="<s0><s1> face. Model gender: female, \n Model ethnicity: Caucasian Model age: 25 Hair style and color: short, straight and brown, Eyes color: brown",
         ),
         face_inpainting_negative_prompt: str = Input(
             description="Face inpainting negative prompt",
             default="frame, mask, surgical, ui, ugly, distorted eyes, deformed iris, toothless, squint, deformed iris, deformed pupils, low quality, jpeg artifacts, ugly, mutilated",
         ),
         max_face_inpaint_size: int = Input(
-            description="Max size of face to inpaint. Recommended: 135-400. If it's too high, may get weird portraits.",
-            default=300,
+            description="Max size of face to inpaint. Recommended: 100-280. If it's too high, may get weird portraits.",
+            default=130,
         ),
         inpainting_gradient_percent_size: float = Input(
-            description="Percent edge to blur to make transition smoother. Recommended: 0.1",
-            default=0.1,
+            description="Percent edge to blur to make transition smoother. Recommended: 0.25",
+            default=0.25,
         ),
         inpainting_guidance_scale: float = Input(
-            description="Guidance scale for inpainting. Recommended: 4.5",
-            default=4.5,
+            description="Guidance scale for inpainting. Recommended: 3.5",
+            default=3.5,
         ),
         inpainting_num_inference_steps: int = Input(
-            description="Inference steps inpainting. Recommended: 28",
-            default=28,
+            description="Inference steps inpainting. Recommended: 25",
+            default=25,
         ),
         inpainting_lora_scale: float = Input(
             description="LoRA additive scale for face. Recommended:0.8-0.95",
