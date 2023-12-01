@@ -186,7 +186,7 @@ class Predictor(BasePredictor):
         ),
         prompt: str = Input(
             description="Input prompt",
-            default="An TOK riding a rainbow unicorn",
+            default="A full body Realistic portrait of TOK man.\nModel gender: male,\nModel ethnicity: Caucasian/Asian,\nModel age: 20,\nHair style and color: short, straight and brown,\nEyes color: brown,\nDressing style: any,\nSurrounding environment: a Jedi Knight, wielding a lightsaber, standing on a distant planet with a swirling galaxy background, and a red lightsaber glow in the foreground.,\nCamera settings: cinematic, soft light, clean",
         ),
         negative_prompt: str = Input(
             description="Input Negative Prompt",
@@ -198,7 +198,7 @@ class Predictor(BasePredictor):
         ),
         face_inpainting_prompt: str = Input(
             description="Face inpainting prompt",
-            default="<s0><s1> face. Model gender: female, \n Model ethnicity: Caucasian Model age: 25 Hair style and color: short, straight and brown, Eyes color: brown",
+            default="<s0><s1> face. Model gender: female,\nModel ethnicity: Caucasian\nModel age: 25\nHair style and color: short, straight and brown,\nEyes color: brown",
         ),
         face_inpainting_negative_prompt: str = Input(
             description="Face inpainting negative prompt",
