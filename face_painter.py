@@ -1,6 +1,6 @@
 import mediapipe
 import numpy as np
-from PIL import Image, ImageOps, ImageDraw
+from PIL import Image, ImageOps, ImageDraw, ImageFilter
 import time
 import os
 class ImageArea:
@@ -12,7 +12,7 @@ class ImageArea:
 
 class FacePainter:
     class Mask:
-        def __init__(self, face_area: ImageArea, max_width: int, max_height: int, zoom: int=640):
+        def __init__(self, face_area: ImageArea, max_width: int, max_height: int, zoom: int=1024):
             self.face_area = face_area
             self.max_width = max_width
             self.max_height = max_height
@@ -57,7 +57,6 @@ class FacePainter:
                 base_image = base_image.resize([self.zoomed_size, self.zoomed_size])
             return base_image
 
-    # TODO(anna) replace pipeline with non-custom to vana one
     def __init__(self, inpaint_pipe) -> None:
         self.face_detection = mediapipe.solutions.face_detection.FaceDetection(
             model_selection=1, min_detection_confidence=0.10
@@ -65,7 +64,7 @@ class FacePainter:
         self.inpaint_pipe = inpaint_pipe
         self.masks = []
 
-    def _create_masks(self, face_detect_image: Image.Image, max_face_mask_size : int=256):
+    def _create_masks(self, face_detect_image: Image.Image, face_padding, max_face_mask_size : int=256):
         self.masks = []
         image_arr = np.asarray(face_detect_image)
         results = self.face_detection.process(image_arr)
@@ -92,6 +91,13 @@ class FacePainter:
                 )
                 height = height - height % 2
 
+                # Add padding
+                padding = face_padding
+                x_min = max(x_min - padding, 0)
+                y_min = max(y_min - padding, 0)
+                width = min(width + 2 * padding, image_arr.shape[1] - x_min)
+                height = min(height + 2 * padding, image_arr.shape[0] - y_min)
+
                 self.masks.append(
                     self.Mask(
                     face_area=ImageArea(x_min, y_min, width, height),
@@ -100,41 +106,59 @@ class FacePainter:
                     )
                 )
 
-    def _paste(self, new_image, area: ImageArea):
+    def _paste(self, new_image, area: ImageArea, gradient_percent_size = 0.1):
 
         new_image = new_image.resize([area.w, area.h])
         paste_mask = Image.new('L', new_image.size, 255)
-        gradient_size = 15
+
+        gradient_size = int(gradient_percent_size * (area.w + area.h))
+        print('Gradient_size', gradient_size, gradient_percent_size, "%" )
         for i in range(gradient_size):
             alpha = 255 * (i + 1) // (gradient_size + 1)
+            x0, y0 = i, i
+            x1, y1 = paste_mask.size[0] - 1 - i, paste_mask.size[1] - 1 - i
+            # Ensure that x1 and y1 are always greater than or equal to x0 and y0
+            if x1 < x0 or y1 < y0:
+                break
             ImageDraw.Draw(paste_mask).rectangle(
-                [i, i, paste_mask.size[0] - 1 - i, paste_mask.size[1] - 1 - i], outline=alpha, width=1
+                [x0, y0, x1, y1], outline=alpha, width=1
             )
+        
         self.image.paste(new_image, (area.x, area.y), paste_mask)
 
     def paint_faces(
         self, 
         image, 
-        prompt, 
-        guidance_scale=4.5, 
+        prompt,
+        negative_prompt,
+        generator,
+        lora_scale=0.9,
+        inpainting_guidance_scale=4.5, 
+        inpainting_num_inference_steps=28,
         lora_paths=[], 
         face_detect_image=None,
         save_working_images=False,
-        max_face_size=None
+        max_face_size=None,
+        gradient_percent_size=0.1,
+        face_padding=0,
     ):
         
-        # self.inpaint_pipe.enable_vae_slicing = False
+        # Disable vae            
+        self.inpaint_pipe.enable_vae_slicing = False
         self.image = image.copy()
         if face_detect_image is None:
             face_detect_image = self.image
-        self._create_masks(face_detect_image)
+        self._create_masks(face_detect_image,face_padding)
 
+        # This can be used for multiple person loras
         if lora_paths:
             print('got lora paths', lora_paths)
-            prompt = 'a bright green square, bright green square'
+            # prompt = 'a bright green square, bright green square'
             # prompt = f'"<1>" face. {prompt.replace("<1>", "").replace("<2>", "")}'
         else:
-            prompt = 'a bright green square, bright green square'
+            print('no lora paths', lora_paths)
+            pass
+            # prompt = 'a bright green square, bright green square'
             # prompt = f' face. {prompt.replace("<1>", "").replace("<2>", "")}'
         for i, mask in enumerate(
             sorted(self.masks, key=lambda x: x.face_area.w * x.face_area.h, reverse=True)
@@ -154,22 +178,24 @@ class FacePainter:
                 self.image.save(f"./tmp/{time.time()}_working_{i}.png")
                 mask.mask.save(f"./tmp/{time.time()}_mask_{i}.png")
                 mask.image(self.image).save(f"./tmp/{time.time()}_image_{i}.png")
-
-            # Generate with new model
             
             # In-paint the image
             output = self.inpaint_pipe(
                 # TODO(anna) these args may be off
                 # inpaint_pipe(**inpainting_args, **sdxl_kwargs)
+                generator=generator,
+                cross_attention_kwargs={"scale": lora_scale},
                 prompt=prompt,
-                negative_prompt="frame, mask, surgical, ui, ugly, distorted eyes, deformed iris, toothless, squint, deformed iris, deformed pupils, low quality, jpeg artifacts, ugly, mutilated",
+                negative_prompt=negative_prompt, # "frame, mask, surgical, ui, ugly, distorted eyes, deformed iris, toothless, squint, deformed iris, deformed pupils, low quality, jpeg artifacts, ugly, mutilated",
                 image=mask.image(self.image),
                 mask_image=mask.mask,
-                guidance_scale=guidance_scale,
-                num_inference_steps=10 + int(4 * guidance_scale),
+                guidance_scale=inpainting_guidance_scale, #, guidance_scale,
+                num_inference_steps=inpainting_num_inference_steps, #, 10 + int(4 * guidance_scale),
                 width=mask.zoomed_size,
                 height=mask.zoomed_size,
             )
 
-            self._paste(output.images[0], mask.mask_area)
+            self._paste(output.images[0], mask.mask_area, gradient_percent_size)
+            # Replace with line below when testing
+            # self._paste(output["images"][0], mask.mask_area, gradient_percent_size)
         return self.image
