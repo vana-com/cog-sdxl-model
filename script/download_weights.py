@@ -3,7 +3,7 @@
 # internet, which will take a long time.
 
 import torch
-from diffusers import AutoencoderKL, DiffusionPipeline
+from diffusers import AutoencoderKL, DiffusionPipeline, StableDiffusionXLInpaintPipeline
 from diffusers.pipelines.stable_diffusion.safety_checker import (
     StableDiffusionSafetyChecker,
 )
@@ -23,13 +23,20 @@ better_vae = AutoencoderKL.from_pretrained(
 
 pipe = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    vae=better_vae,
     torch_dtype=torch.float16,
     use_safetensors=True,
     variant="fp16",
 )
 
 pipe.save_pretrained("./sdxl-cache", safe_serialization=True)
+
+inpaint_pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
+    "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
+    torch_dtype=torch.float16,
+    variant="fp16"
+)
+inpaint_pipe.save_pretrained("./sdxl-inpainting-cache", safe_serialization=True)
+
 
 pipe = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0",
