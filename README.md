@@ -8,17 +8,13 @@ This is an implementation of the [SDXL](https://github.com/Stability-AI/generati
 
 Follow the [model pushing guide](https://replicate.com/docs/guides/push-a-model) to push your own fork of SDXL to [Replicate](https://replicate.com).
 
-## Basic Usage
+## Setup
 
-for prediction,
-
-```bash
-cog predict -i prompt="a photo of TOK"
-```
-
-```bash
-cog train -i input_images=@example_datasets/zeke.zip -i use_face_detection_instead=True
-```
+- Install cog
+- Start docker
+- Make any changes you need
+- Push to replicate using `cog push r8.im/vana-com/vana-sdxl-lora-inference-dev`
+Note: if you are on a machine with a GPU, you could run inference locally, but if not you can make changes and push to replicate to test. 
 
 ## Update notes
 
