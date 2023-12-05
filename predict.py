@@ -326,12 +326,20 @@ class Predictor(BasePredictor):
 
         if enable_face_inpainting:
             # TODO(anna) Cache this model so we don't have to load it everytime
-            print("Loading SDXL face inpaint pipeline...")
-            self.inpaint_pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
-                "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
-                torch_dtype=torch.float16,
-                variant="fp16"
-            )
+            print("Loading SDXL inpaint pipeline...")
+            try:
+                self.inpaint_pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
+                    SDXL_INPAINTING_MODEL_CACHE,
+                    torch_dtype=torch.float16,
+                    variant="fp16"
+                )
+            except:
+                print("Could not find cached inpainting model, redownloading")
+                self.inpaint_pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
+                    "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
+                    torch_dtype=torch.float16,
+                    variant="fp16"
+                )
             # Load lora into inpainting model
             self.load_trained_weights(lora_1, self.inpaint_pipe)
             self.inpaint_pipe.to("cuda")
