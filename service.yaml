@@ -1,0 +1,20 @@
+service:
+  readiness_probe: /health-check
+  replicas: 2
+
+resources:
+  ports:
+    - 5000
+  accelerators: {A40:1, A100:1}
+
+workdir: .
+
+setup: |
+  set -e
+  sudo curl -o /usr/local/bin/cog -L "https://github.com/replicate/cog/releases/latest/download/cog_$(uname -s)_$(uname -m)"
+  sudo chmod +x /usr/local/bin/cog
+  cog build -t vana-sdxl-lora-inference-dev
+
+run: |
+  docker run -d -p 5000:5000 --gpus all vana-sdxl-lora-inference-dev
+  echo "View docs at http://localhost:5000/docs"
